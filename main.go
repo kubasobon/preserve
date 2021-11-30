@@ -73,7 +73,7 @@ func nodeDetails(parents []*yaml.Node, y *yaml.Node) {
 		yaml.ScalarNode:   "ScalarNode",
 		yaml.AliasNode:    "AliasNode",
 	}[y.Kind]
-	indent := strings.Repeat("-", len(parents))
+	indent := strings.Repeat("  ", len(parents))
 	log.Printf(
 		"%s[%s] %s: %s (@%d:%d) %s\n", indent, kind, y.Tag, y.Value, y.Line, y.Column, comments,
 	)
