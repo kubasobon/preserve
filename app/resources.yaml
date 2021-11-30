@@ -37,5 +37,8 @@ spec:
       - image: ubuntu:latest
         name: the-first
       - image: ubuntu:latest
-        name: the-second
+        # leading comment
+        name: the-second # line comment
+        # foot comment
+        # more than one line
 ---
