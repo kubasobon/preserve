@@ -35,7 +35,7 @@ func stashTemplateTags(path string) error {
 		if err := yaml.Unmarshal(doc, root); err != nil {
 			return err
 		}
-		err = stashNode(root)
+		err = stashNode([]*yaml.Node{}, root)
 		if err != nil {
 			return err
 		}
@@ -46,15 +46,16 @@ func stashTemplateTags(path string) error {
 
 // stashNode walks through yaml.Node object and its Content recursively to
 // find, mark, and temporarily remove template tags.
-func stashNode(y *yaml.Node) error {
-	nodeDetails(y)
+func stashNode(parents []*yaml.Node, y *yaml.Node) error {
+	nodeDetails(parents, y)
+	subParents := append(parents, y)
 	for _, subNode := range y.Content {
-		stashNode(subNode)
+		stashNode(subParents, subNode)
 	}
 	return nil
 }
 
-func nodeDetails(y *yaml.Node) {
+func nodeDetails(parents []*yaml.Node, y *yaml.Node) {
 	comments := ""
 	if y.HeadComment != "" {
 		comments += " #h"
@@ -72,8 +73,9 @@ func nodeDetails(y *yaml.Node) {
 		yaml.ScalarNode:   "ScalarNode",
 		yaml.AliasNode:    "AliasNode",
 	}[y.Kind]
+	indent := strings.Repeat("-", len(parents))
 	log.Printf(
-		"[%s] %s: %s (@%d:%d) %s\n", kind, y.Tag, y.Value, y.Line, y.Column, comments,
+		"%s[%s] %s: %s (@%d:%d) %s\n", indent, kind, y.Tag, y.Value, y.Line, y.Column, comments,
 	)
 }
 
