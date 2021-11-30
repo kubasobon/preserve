@@ -1,0 +1,5 @@
+namespace: kuba
+resources:
+- resources.yaml
+patchesStrategicMerge:
+- patches.yaml

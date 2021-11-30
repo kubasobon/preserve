@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cfg
+data:
+  key1: config1
+  key2: config2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: scrt
+stringData:
+  key1: abc
+  key2: def
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: dply
+    b: b
+    c: c
+    d: d
+  name: dply
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dply
+  template:
+    metadata:
+      labels:
+        app: dply
+    spec:
+      containers:
+      - image: ubuntu:latest
+        name: the-first
+      - image: ubuntu:latest
+        name: the-second
+---
