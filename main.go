@@ -45,7 +45,10 @@ func stashTemplateTagsInFile(path string) error {
 		if err != nil {
 			return err
 		}
-		log.Println(path, ": ", docId)
+		log.Println(path, ": ", docId, "   # ----------------------")
+
+		// we can safely unpack the K8s document here
+		root = root.Content[0]
 
 		err = stashTemplateTagsInDoc([]*yaml.Node{}, root)
 		if err != nil {
@@ -59,9 +62,14 @@ func stashTemplateTagsInFile(path string) error {
 // stashTemplateTagsInDoc walks through yaml.Node object and its Content
 // recursively to find, mark, and temporarily remove template tags.
 func stashTemplateTagsInDoc(parents []*yaml.Node, node *yaml.Node) error {
-	// nodeDetails(parents, y)
+	if node.Tag != "!!map" && node.Tag != "!!seq" {
+		nodePath, err := getNodePath(parents, node)
+		if err != nil {
+			return err
+		}
+		log.Println(nodePath)
+	}
 	subParents := append(parents, node)
-
 	for _, subNode := range node.Content {
 		stashTemplateTagsInDoc(subParents, subNode)
 	}
@@ -75,9 +83,37 @@ func stashTemplateTagsInDoc(parents []*yaml.Node, node *yaml.Node) error {
 // assumption that parents[0] node is a valid K8s object -
 // `isK8sObject(parents[0])` should return `true`.
 func getNodePath(parents []*yaml.Node, node *yaml.Node) (string, error) {
-	path := ""
+	pathSegments := []string{}
 
-	return path, nil
+	for i, n := range parents {
+		if i == 0 {
+			continue
+		}
+		prev := parents[i-1]
+		pathSegment := ""
+
+		switch prev.Kind {
+		case yaml.MappingNode:
+			_, mapKey, ok := findKeyInMappingNode(prev, n)
+			if !ok {
+				return "", fmt.Errorf("child not found in parent")
+			}
+			pathSegment = mapKey
+		case yaml.SequenceNode:
+			idx, ok := findInSequenceNode(prev, n)
+			if !ok {
+				return "", fmt.Errorf("child not found in parent")
+			}
+			pathSegment = fmt.Sprintf("[%d]", idx)
+		default:
+			return "", fmt.Errorf("How can any other node be a parent!?")
+		}
+
+		pathSegments = append(pathSegments, pathSegment)
+	}
+
+	pathSegments = append(pathSegments, node.Value)
+	return strings.Join(pathSegments, "."), nil
 }
 
 // TODO: check for the below specified in kustomization:
