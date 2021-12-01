@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -16,7 +17,7 @@ var files = []string{
 
 func main() {
 	for _, path := range files {
-		if err := stashTemplateTags(path); err != nil {
+		if err := stashTemplateTagsInFile(path); err != nil {
 			log.Fatalf("%s: %s", path, err)
 		}
 	}
@@ -51,13 +52,140 @@ func stashTemplateTagsInFile(path string) error {
 
 // stashTemplateTagsInDoc walks through yaml.Node object and its Content
 // recursively to find, mark, and temporarily remove template tags.
-func stashTemplateTagsInDoc(parents []*yaml.Node, y *yaml.Node) error {
+func stashTemplateTagsInDoc(parents []*yaml.Node, node *yaml.Node) error {
 	// nodeDetails(parents, y)
-	subParents := append(parents, y)
-	for _, subNode := range y.Content {
-		stashNode(subParents, subNode)
+	subParents := append(parents, node)
+
+	for _, subNode := range node.Content {
+		stashTemplateTagsInDoc(subParents, subNode)
 	}
 	return nil
+}
+
+// getNodePath produces a path that represents node's position in a document in
+// a way that is unique to it. Order of nodes in the source YAML file can be
+// reshuffled (save for arrays, or yaml.SequenceNodes as they're called in the
+// upstream library) and the path will remain valid. getNodePath is based on
+// assumption that parents[0] node is a valid K8s object -
+// `isK8sObject(parents[0])` should return `true`.
+func getNodePath(parents []*yaml.Node, node *yaml.Node) (string, error) {
+	path := ""
+
+	return path, nil
+}
+
+func getDocIdentifier(root *yaml.Node) (string, error) {
+	var apiVersion, kind, name, namespace string
+	doc := root.Content[1]
+
+	{
+		_, node, ok := findInMappingNode(doc, "apiVersion")
+		if !ok {
+			return "", fmt.Errorf("could not read apiVersion")
+		}
+		apiVersion = node.Value
+	}
+	{
+		_, node, ok := findInMappingNode(doc, "kind")
+		if !ok {
+			return "", fmt.Errorf("could not read kind")
+		}
+		kind = node.Value
+	}
+	var metadata *yaml.Node
+	{
+		_, meta, ok := findInMappingNode(doc, "metadata")
+		if !ok {
+			return "", fmt.Errorf("could not read metadata")
+		}
+		metadata = meta
+	}
+	{
+		_, node, ok := findInMappingNode(metadata, "name")
+		if !ok {
+			return "", fmt.Errorf("could not read metadata.name")
+		}
+		name = node.Value
+	}
+	{
+		_, node, ok := findInMappingNode(metadata, "namespace")
+		if ok {
+			namespace = node.Value
+		}
+	}
+
+	id := fmt.Sprintf("%s.%s", apiVersion, kind)
+	if namespace != "" {
+		id = fmt.Sprintf(".%s/%s", namespace, name)
+	} else {
+		id = fmt.Sprintf(".%s", name)
+	}
+	return id, nil
+}
+
+func findInMappingNode(mappingNode *yaml.Node, key string) (idx int, node *yaml.Node, found bool) {
+	if mappingNode.Kind != yaml.MappingNode {
+		return 0, nil, false
+	}
+	for i, n := range mappingNode.Content {
+		if n.Value == key {
+			// Found the key node. Will return the next node, since
+			// MappingNode.Content is structured like this:
+			// [key1, value1, key2, value2, ...]
+			return i + 1, mappingNode.Content[i+1], true
+		}
+	}
+	return 0, nil, false
+}
+
+func findKeyInMappingNode(mappingNode *yaml.Node, key *yaml.Node) (idx int, mapKey string, found bool) {
+	if mappingNode.Kind != yaml.MappingNode {
+		return 0, "", false
+	}
+	for i, n := range mappingNode.Content {
+		if n.Kind == key.Kind && n.Value == key.Value && eqContent(n, key) {
+			return i - 1, mappingNode.Content[i-1].Value, true
+		}
+	}
+	return 0, "", false
+}
+
+func findInSequenceNode(sequenceNode *yaml.Node, key *yaml.Node) (idx int, found bool) {
+	if sequenceNode.Kind != yaml.SequenceNode {
+		return 0, false
+	}
+	for i, n := range sequenceNode.Content {
+		if n.Kind == key.Kind && n.Value == key.Value && eqContent(n, key) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func eqContent(a, b *yaml.Node) bool {
+	if (a == nil && b != nil) || (a != nil && b == nil) {
+		return false
+	} else if a == nil && b == nil {
+		return true
+	}
+
+	if (a.Content == nil && b.Content != nil) || (a.Content != nil && b.Content == nil) {
+		return false
+	} else if a.Content == nil && b.Content == nil {
+		return true
+	}
+
+	if len(a.Content) != len(b.Content) {
+		return false
+	}
+
+	for i, _ := range a.Content {
+		if a.Content[i] != b.Content[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func nodeDetails(parents []*yaml.Node, y *yaml.Node) {
