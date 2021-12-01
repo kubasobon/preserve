@@ -22,10 +22,10 @@ func main() {
 	}
 }
 
-// stashTemplateTags opens a given YAML file and stashes template tags that
+// stashTemplateTagsInFile opens a given YAML file and stashes template tags that
 // would not be recognized by kustomize. The tags are remembered, so they can
 // be resored after calling kustomize.
-func stashTemplateTags(path string) error {
+func stashTemplateTagsInFile(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -35,7 +35,12 @@ func stashTemplateTags(path string) error {
 		if err := yaml.Unmarshal(doc, root); err != nil {
 			return err
 		}
-		err = stashNode([]*yaml.Node{}, root)
+
+		if !isK8sObject(root) {
+			continue
+		}
+
+		err = stashTemplateTagsInDoc([]*yaml.Node{}, root)
 		if err != nil {
 			return err
 		}
@@ -44,10 +49,10 @@ func stashTemplateTags(path string) error {
 	return nil
 }
 
-// stashNode walks through yaml.Node object and its Content recursively to
-// find, mark, and temporarily remove template tags.
-func stashNode(parents []*yaml.Node, y *yaml.Node) error {
-	nodeDetails(parents, y)
+// stashTemplateTagsInDoc walks through yaml.Node object and its Content
+// recursively to find, mark, and temporarily remove template tags.
+func stashTemplateTagsInDoc(parents []*yaml.Node, y *yaml.Node) error {
+	// nodeDetails(parents, y)
 	subParents := append(parents, y)
 	for _, subNode := range y.Content {
 		stashNode(subParents, subNode)
@@ -89,4 +94,42 @@ func splitYamlByDocument(b []byte) [][]byte {
 		byteDocuments = append(byteDocuments, []byte(doc))
 	}
 	return byteDocuments
+}
+
+// isK8sObject checks if given node represents a K8s resource. Since mapping is
+// addressed by group, kind, namespace, and name, we will skip yaml documents
+// not representing valid objects.
+func isK8sObject(node *yaml.Node) bool {
+	if node.Kind != yaml.DocumentNode {
+		return false
+	}
+
+	if len(node.Content) != 1 {
+		return false
+	}
+
+	if node.Content[0].Kind != yaml.MappingNode {
+		return false
+	}
+
+	var apiVersionPresent, kindPresent, metadataPresent bool
+	for _, subNode := range node.Content[0].Content {
+		switch subNode.Value {
+		case "apiVersion":
+			apiVersionPresent = true
+		case "kind":
+			kindPresent = true
+		case "metadata":
+			metadataPresent = true
+		}
+		if apiVersionPresent && kindPresent && metadataPresent {
+			break
+		}
+	}
+
+	if !apiVersionPresent || !kindPresent || !metadataPresent {
+		return false
+	}
+
+	return true
 }
