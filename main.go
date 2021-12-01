@@ -41,6 +41,12 @@ func stashTemplateTagsInFile(path string) error {
 			continue
 		}
 
+		docId, err := getDocIdentifier(root)
+		if err != nil {
+			return err
+		}
+		log.Println(path, ": ", docId)
+
 		err = stashTemplateTagsInDoc([]*yaml.Node{}, root)
 		if err != nil {
 			return err
@@ -74,9 +80,15 @@ func getNodePath(parents []*yaml.Node, node *yaml.Node) (string, error) {
 	return path, nil
 }
 
+// TODO: check for the below specified in kustomization:
+// - namespace
+// - namePrefix
+// - nameSuffix
+// and apply here!
+// doc: https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#kustomize-feature-list
 func getDocIdentifier(root *yaml.Node) (string, error) {
 	var apiVersion, kind, name, namespace string
-	doc := root.Content[1]
+	doc := root.Content[0]
 
 	{
 		_, node, ok := findInMappingNode(doc, "apiVersion")
@@ -116,9 +128,9 @@ func getDocIdentifier(root *yaml.Node) (string, error) {
 
 	id := fmt.Sprintf("%s.%s", apiVersion, kind)
 	if namespace != "" {
-		id = fmt.Sprintf(".%s/%s", namespace, name)
+		id = fmt.Sprintf("%s.%s/%s", id, namespace, name)
 	} else {
-		id = fmt.Sprintf(".%s", name)
+		id = fmt.Sprintf("%s.%s", id, name)
 	}
 	return id, nil
 }
